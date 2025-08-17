@@ -266,7 +266,7 @@ recognize_speech() {
     fi
     
     local text
-    text=$(cat "$output_file" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    text=$(cat "$output_file" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '\n')
     
     if [[ -z "$text" ]]; then
         notify "⚠️ 识别结果为空" "请检查录音内容或麦克风设置"

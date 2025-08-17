@@ -10,6 +10,7 @@
 - 🔧 **错误处理**: 完善的错误处理和资源清理
 - 🌍 **多系统支持**: 支持 Debian/Ubuntu、Arch、Fedora 等主流发行版
 - 📱 **桌面集成**: 自动创建桌面快捷方式
+- ⚙️ **灵活配置**: 支持自定义模型、语言、超时等参数
 
 ## 🚀 快速安装
 
@@ -20,9 +21,12 @@
 git clone https://github.com/yourusername/linux-speech2text.git
 cd linux-speech2text
 
-# 运行安装脚本
+# 运行安装脚本（支持交互式配置）
 chmod +x install.sh
 ./install.sh
+
+# 或者使用交互式配置模式
+./install.sh --interactive
 ```
 
 ### 手动安装
@@ -55,12 +59,87 @@ pip3 install --user openai-whisper
 
 ```bash
 # 复制脚本到用户目录
-cp voice_toggle_optimized.sh ~/.local/bin/voice-toggle
+cp voice-toggle.sh ~/.local/bin/voice-toggle
 chmod +x ~/.local/bin/voice-toggle
 
 # 确保 ~/.local/bin 在 PATH 中
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
+```
+
+## ⚙️ 配置参数
+
+在安装前，您可以根据需要调整以下配置参数。修改 `voice-toggle.sh` 脚本开头的配置区域：
+
+### 核心配置参数
+
+```bash
+# ==================== 配置区域 ====================
+readonly MAX_DURATION=60        # 最大录音时长（秒）
+readonly REMINDER_TIME=50       # 提醒时间（秒）
+readonly SAMPLE_RATE=16000      # 音频采样率
+readonly WHISPER_MODEL="small"  # Whisper 模型大小
+readonly WHISPER_LANGUAGE="Chinese"  # 识别语言
+
+# 提示音文件路径
+readonly START_DING_PATHS=(
+    "/usr/share/sounds/freedesktop/stereo/message-new-instant.oga"
+    "$HOME/.local/share/sounds/start.wav"
+)
+
+readonly END_DING_PATHS=(
+    "/usr/share/sounds/freedesktop/stereo/complete.oga"
+    "$HOME/.local/share/sounds/end.wav"
+)
+```
+
+### 参数说明
+
+#### 🤖 Whisper 模型选择 (`WHISPER_MODEL`)
+- **tiny**: 最快，准确率较低，约 39MB
+- **base**: 平衡选择，约 74MB
+- **small**: 推荐选择，约 244MB
+- **medium**: 高准确率，约 769MB
+- **large**: 最高准确率，约 1550MB, 推荐使用large-v3-Turbo这个和large(也就是默认的large-v3)的准确率几乎一样,但是推理时间只需要一半
+
+#### 🌍 语言设置 (`WHISPER_LANGUAGE`)
+- **Chinese**: 中文识别
+- **English**: 英文识别
+- **auto**: 自动检测语言
+- 其他支持的语言：Japanese, Korean, French, German, Spanish 等
+
+#### ⏱️ 时间设置
+- **MAX_DURATION**: 最大录音时长（建议 30-120 秒）
+- **REMINDER_TIME**: 提醒时间，应小于 MAX_DURATION
+
+#### 🔊 音频设置
+- **SAMPLE_RATE**: 音频采样率（16000 适合语音识别）
+- **START_DING_PATHS**: 开始录音提示音文件路径列表
+- **END_DING_PATHS**: 结束录音提示音文件路径列表
+
+#### 💻 设备选择 (Whisper 内部)
+Whisper 会自动检测并使用可用的计算设备：
+- **CPU**: 兼容性最好，速度较慢
+- **CUDA**: 需要 NVIDIA GPU 和 CUDA 支持，速度最快
+- 安装 CUDA 版本的 PyTorch 可启用 GPU 加速
+
+### 配置建议
+
+**低配置设备:**
+```bash
+readonly WHISPER_MODEL="tiny"
+readonly MAX_DURATION=30
+```
+
+**高配置设备:**
+```bash
+readonly WHISPER_MODEL="medium"
+readonly MAX_DURATION=120
+```
+
+**多语言环境:**
+```bash
+readonly WHISPER_LANGUAGE="auto"
 ```
 
 ## 📖 使用方法
@@ -100,29 +179,47 @@ gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/or
 3. 🎯 **再按快捷键**: 停止录音并开始识别
 4. ✅ **自动输入**: 识别结果会自动输入到当前焦点位置
 
-## ⚙️ 配置选项
+## 🔧 故障排除
 
-脚本支持以下配置（在脚本开头修改）：
+### 音频设备问题
 
+#### 检查音频设备
 ```bash
-readonly MAX_DURATION=60        # 最大录音时长（秒）
-readonly REMINDER_TIME=50       # 提醒时间（秒）
-readonly SAMPLE_RATE=16000      # 音频采样率
-readonly WHISPER_MODEL="base"   # Whisper 模型大小
-readonly WHISPER_LANGUAGE="Chinese"  # 识别语言
+# 列出所有音频输入设备
+pactl list short sources
+
+# 查看默认音频设备
+pactl info | grep "Default Source"
+
+# 测试麦克风录音（录制 5 秒）
+ffmpeg -f pulse -i default -t 5 test_recording.wav
+
+# 播放测试录音
+paplay test_recording.wav
 ```
 
-## 🔧 故障排除
+#### 音频设备故障排除
+```bash
+# 重启音频服务
+systemctl --user restart pipewire pipewire-pulse
+# 或者对于 PulseAudio
+pulseaudio -k && pulseaudio --start
+
+# 检查音频服务状态
+systemctl --user status pipewire
+```
 
 ### 常见问题
 
 1. **录音失败**
    - 检查麦克风权限
-   - 确认 PulseAudio 正在运行: `pulseaudio --check`
+   - 确认 PulseAudio/PipeWire 正在运行: `pactl info`
+   - 测试录音设备: `ffmpeg -f pulse -i default -t 3 test.wav`
 
 2. **识别结果为空**
    - 检查录音音量是否足够
    - 确认说话清晰度
+   - 播放录音文件检查质量: `paplay /tmp/voice_input/voice_input.wav`
 
 3. **无法输入文字**
    - 确保安装了 `xdotool` 或 `xclip`
@@ -132,29 +229,106 @@ readonly WHISPER_LANGUAGE="Chinese"  # 识别语言
    - Whisper 首次运行需要下载模型文件
    - 后续使用会很快
 
+5. **GPU 加速不工作**
+   - 安装 CUDA 版本的 PyTorch: `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
+   - 检查 CUDA 可用性: `python -c "import torch; print(torch.cuda.is_available())"`
+
 ### 日志查看
 
 ```bash
 # 查看详细日志
-tail -f /tmp/voice_input_*/voice_input.log
+tail -f /tmp/voice_input/voice_input.log
+
+# 查看最近的错误
+grep "ERROR" /tmp/voice_input/voice_input.log
 ```
 
-## 🎯 性能优化
+## 📁 文件和目录结构
 
-- **GPU 加速**: 如果有 NVIDIA GPU，安装 CUDA 版本的 PyTorch 可显著提升识别速度
-- **更快的模型**: 可以尝试使用 `faster-whisper` 替代 `openai-whisper`
-- **模型选择**: 根据需要选择不同大小的模型（tiny/base/small/medium/large）
-
-## 📁 文件结构
-
+### 项目文件
 ```
 linux-speech2text/
-├── voice_toggle.sh              # 原始脚本
-├── voice_toggle_optimized.sh    # 优化版本脚本
+├── voice-toggle.sh              # 主脚本文件
 ├── install.sh                   # 自动安装脚本
+├── model_benchmark.py           # 模型性能测试工具
+├── test_voice_system.sh         # 系统测试脚本
+├── setup_shortcuts.sh           # 快捷键设置脚本
 ├── README.md                    # 说明文档
 └── LICENSE                      # 许可证
 ```
+
+### 安装后的文件位置
+
+#### 脚本安装位置
+- **主脚本**: `~/.local/bin/voice-toggle`
+- **配置目录**: `~/.config/voice-input/`
+- **提示音文件**: `~/.local/share/sounds/`
+- **桌面快捷方式**: `~/.local/share/applications/voice-input.desktop`
+
+#### 运行时文件位置
+- **临时目录**: `/tmp/voice_input/`
+- **录音文件**: `/tmp/voice_input/voice_input.wav`
+- **日志文件**: `/tmp/voice_input/voice_input.log`
+- **进程文件**: `/tmp/voice_input/recording.pid`
+
+#### Whisper 模型缓存位置
+- **默认位置**: `~/.cache/whisper/`
+- **模型文件**: 根据选择的模型大小，文件大小从 39MB 到 1550MB 不等
+
+## 🎯 性能优化
+
+### GPU 加速设置
+```bash
+# 安装 CUDA 版本的 PyTorch（如果有 NVIDIA GPU）
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# 验证 CUDA 可用性
+python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+```
+
+### 模型性能测试 (这个似乎有点问题,建议直接用whisper命令测)
+```bash
+# 运行模型性能测试
+python model_benchmark.py
+
+# 测试特定模型
+python model_benchmark.py --models tiny,base,small
+```
+
+### 优化建议
+- **更快的模型**: 可以尝试使用 `faster-whisper` 替代 `openai-whisper`
+- **模型选择**: 根据设备性能选择合适大小的模型
+- **内存优化**: 使用较小的模型可以减少内存占用
+- **网络优化**: 首次运行前预下载模型文件
+
+## 🔍 测试和调试
+
+### 系统测试
+```bash
+# 运行完整系统测试
+./test_voice_system.sh
+
+# 测试音频设备
+./test_voice_system.sh --audio-only
+```
+
+### 手动测试录音
+```bash
+# 测试 5 秒录音
+ffmpeg -f pulse -i default -t 5 -y test_manual.wav
+
+# 播放录音检查质量
+paplay test_manual.wav
+
+# 使用 Whisper 测试识别
+whisper test_manual.wav --language Chinese --model small
+```
+
+## 🚀 未来开发计划
+
+目前有一些将来的更新计划
+- 实时输入系统,也就是说你可以一边说话,文字就一边上屏,并且可根据你说的话进行一些实时修改
+- 手机端作为外接麦克风, 甚至是网络输入方式: 通过公网服务器作为跳板机,用户在手机端下达命令,而通过一些远程桌面服务查看当前Agent的工作状态,已达到`Vibe programming`的目标
 
 ## 🤝 贡献
 

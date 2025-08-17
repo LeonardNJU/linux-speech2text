@@ -15,7 +15,7 @@ readonly LOG_FILE="$TEMP_DIR/voice_input.log"
 readonly MAX_DURATION=60
 readonly REMINDER_TIME=50
 readonly SAMPLE_RATE=16000
-readonly WHISPER_MODEL="base"
+readonly WHISPER_MODEL="small"
 readonly WHISPER_LANGUAGE="Chinese"
 
 # 提示音文件路径

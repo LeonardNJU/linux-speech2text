@@ -11,8 +11,8 @@ readonly CONFIG_DIR="$HOME/.config/voice-input"
 readonly SOUNDS_DIR="$HOME/.local/share/sounds"
 
 # 默认配置参数
-DEFAULT_WHISPER_MODEL="small"
-DEFAULT_WHISPER_LANGUAGE="Chinese"
+DEFAULT_WHISPER_MODEL="ggml-small.bin"
+DEFAULT_WHISPER_LANGUAGE="zh"
 DEFAULT_MAX_DURATION=60
 DEFAULT_REMINDER_TIME=50
 DEFAULT_SAMPLE_RATE=16000
@@ -89,22 +89,22 @@ interactive_config() {
     echo ""
 
     # Whisper 模型选择
-    echo "🤖 选择 Whisper 模型:"
-    echo "  tiny            - 最快，准确率较低 (~39MB)"
-    echo "  base            - 平衡选择 (~74MB)"
-    echo "  small           - 推荐选择 (~244MB) [默认]"
-    echo "  medium          - 高准确率 (~769MB)"
-    echo "  large-v3-turbo  - 最高准确率 (~1550MB)"
+    echo "🤖 选择 Whisper ggml 模型:"
+    echo "  ggml-tiny.bin      - 最快，准确率较低 (~39MB)"
+    echo "  ggml-base.bin      - 平衡选择 (~74MB)"
+    echo "  ggml-small.bin     - 推荐选择 (~244MB) [默认]"
+    echo "  ggml-medium.bin    - 高准确率 (~769MB)"
+    echo "  ggml-large-v3.bin  - 最高准确率 (~1550MB)"
     read -p "请选择模型 [${DEFAULT_WHISPER_MODEL}]: " USER_WHISPER_MODEL
     USER_WHISPER_MODEL=${USER_WHISPER_MODEL:-$DEFAULT_WHISPER_MODEL}
 
     # 语言设置
     echo ""
     echo "🌍 选择识别语言:"
-    echo "  Chinese - 中文 [默认]"
-    echo "  English - 英文"
-    echo "  auto    - 自动检测"
-    echo "  其他: Japanese, Korean, French, German, Spanish 等"
+    echo "  zh - 中文 [默认]"
+    echo "  en - 英文"
+    echo "  auto - 自动检测"
+    echo "  其他: ja(日语), ko(韩语), fr(法语), de(德语), es(西班牙语) 等"
     read -p "请选择语言 [${DEFAULT_WHISPER_LANGUAGE}]: " USER_WHISPER_LANGUAGE
     USER_WHISPER_LANGUAGE=${USER_WHISPER_LANGUAGE:-$DEFAULT_WHISPER_LANGUAGE}
 
@@ -302,86 +302,116 @@ test_audio_devices() {
     return 0
 }
 
-# 安装 Python 依赖
-install_python_deps() {
-    echo "🐍 安装 Python 依赖..."
+# 安装 whisper.cpp 依赖
+install_whisper_cpp() {
+    echo "🔧 安装 whisper.cpp..."
     
-    local system=$(detect_system)
-    
-    # 根据设备偏好安装对应版本
-    if [[ "$USER_DEVICE_PREFERENCE" == "cuda" ]] || [[ "$USER_DEVICE_PREFERENCE" == "auto" && -x "$(command -v nvidia-smi)" ]]; then
-        echo "🚀 检测到 CUDA 支持，将安装 GPU 加速版本"
-        install_whisper_with_cuda
-    else
-        echo "💻 安装 CPU 版本"
-        install_whisper_cpu
-    fi
-}
-
-# 安装 CPU 版本的 Whisper
-install_whisper_cpu() {
-    # 首先尝试系统包管理器安装
-    local system=$(detect_system)
-    case $system in
-        "arch")
-            if pacman -Ss python-openai-whisper >/dev/null 2>&1; then
-                echo "📦 使用 pacman 安装 openai-whisper..."
-                sudo pacman -S --needed python-openai-whisper
-                return 0
-            fi
-            ;;
-        "fedora")
-            if dnf search python3-openai-whisper >/dev/null 2>&1; then
-                echo "📦 使用 dnf 安装 openai-whisper..."
-                sudo dnf install -y python3-openai-whisper
-                return 0
-            fi
-            ;;
-    esac
-    
-    # 尝试使用 pipx
-    if command -v pipx >/dev/null 2>&1; then
-        echo "📦 使用 pipx 安装 openai-whisper..."
-        pipx install openai-whisper
+    # 检查是否已安装 whisper-cli
+    if command -v whisper-cli >/dev/null 2>&1; then
+        echo "✅ whisper-cli 已安装，版本: $(whisper-cli --help 2>&1 | head -1 || echo "未知")"
         return 0
     fi
     
-    # 尝试 pip 安装
-    install_whisper_fallback
+    # 检查是否需要构建工具
+    check_build_dependencies
+    
+    # 克隆并构建 whisper.cpp
+    build_whisper_cpp
+    
+    # 创建模型目录
+    setup_model_directory
 }
 
-# 安装 CUDA 版本的 Whisper
-install_whisper_with_cuda() {
-    echo "🔧 安装 CUDA 版本的 PyTorch 和 Whisper..."
+# 检查构建依赖
+check_build_dependencies() {
+    echo "🔧 检查构建依赖..."
     
-    if command -v pipx >/dev/null 2>&1; then
-        echo "📦 使用 pipx 安装..."
-        pipx install openai-whisper
-        pipx inject openai-whisper torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-    else
-        install_whisper_fallback
-        echo "🚀 安装 CUDA 版本的 PyTorch..."
-        pip3 install --user torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 2>/dev/null || true
-    fi
-}
-
-# 备用安装方法
-install_whisper_fallback() {
-    if [[ -n "${VIRTUAL_ENV:-}" ]]; then
-        echo "📦 在虚拟环境中安装 openai-whisper..."
-        pip install openai-whisper
-        return 0
-    fi
+    local system=$(detect_system)
+    local missing_deps=()
     
-    if command -v pip3 >/dev/null 2>&1; then
-        echo "📦 尝试使用 pip3 --user 安装..."
-        if pip3 install --user openai-whisper 2>/dev/null; then
-            return 0
-        else
-            echo "⚠️  pip --user 安装失败，尝试使用 --break-system-packages"
-            pip3 install --user openai-whisper --break-system-packages 2>/dev/null || true
+    # 检查必要的构建工具
+    for cmd in git make gcc g++; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing_deps+=("$cmd")
         fi
+    done
+    
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        echo "📦 安装构建依赖: ${missing_deps[*]}"
+        case $system in
+            "debian")
+                sudo apt install -y git build-essential
+                ;;
+            "arch")
+                sudo pacman -S --needed git base-devel
+                ;;
+            "fedora")
+                sudo dnf groupinstall -y "Development Tools"
+                sudo dnf install -y git
+                ;;
+            "opensuse")
+                sudo zypper install -y git gcc gcc-c++ make
+                ;;
+            *)
+                echo "⚠️  请手动安装: git build-essential (或等效包)"
+                read -p "按回车键继续..."
+                ;;
+        esac
     fi
+}
+
+# 构建 whisper.cpp
+build_whisper_cpp() {
+    echo "🔨 构建 whisper.cpp..."
+    
+    local build_dir="/tmp/whisper.cpp-$(date +%s)"
+    local install_dir="$HOME/.local"
+    
+    # 克隆仓库
+    echo "📥 克隆 whisper.cpp 仓库..."
+    if ! git clone https://github.com/ggerganov/whisper.cpp.git "$build_dir"; then
+        echo "❌ 克隆失败，请检查网络连接"
+        exit 1
+    fi
+    
+    cd "$build_dir"
+    
+    # 编译
+    echo "🔨 编译 whisper.cpp..."
+    if ! make -j$(nproc); then
+        echo "❌ 编译失败"
+        exit 1
+    fi
+    
+    # 安装到用户目录
+    echo "📦 安装 whisper-cli 到 $install_dir/bin..."
+    mkdir -p "$install_dir/bin"
+    cp main "$install_dir/bin/whisper-cli"
+    chmod +x "$install_dir/bin/whisper-cli"
+    
+    # 清理构建目录
+    cd /
+    rm -rf "$build_dir"
+    
+    echo "✅ whisper.cpp 安装完成"
+}
+
+# 设置模型目录
+setup_model_directory() {
+    echo "📁 设置模型目录..."
+    
+    local model_dir="$HOME/.local/share/model"
+    mkdir -p "$model_dir"
+    
+    echo "📋 模型目录已创建: $model_dir"
+    echo "💡 您可以从以下地址下载 ggml 模型:"
+    echo "   https://huggingface.co/ggerganov/whisper.cpp"
+    echo "   https://github.com/ggerganov/whisper.cpp#quick-start"
+    echo ""
+    echo "📝 常用模型下载命令示例:"
+    echo "   wget -P $model_dir https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+    echo "   wget -P $model_dir https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+    echo ""
 }
 
 # 创建目录结构
@@ -435,26 +465,74 @@ customize_script() {
     fi
 }
 
-# 初始化 Whisper 模型
-init_whisper() {
-    echo "🤖 初始化 Whisper 模型..."
-    echo "这可能需要几分钟时间下载模型文件..."
+# 检查 PATH 设置
+check_path_setup() {
+    echo "🛤️  检查 PATH 设置..."
     
+    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+        echo "⚠️  $HOME/.local/bin 不在 PATH 中"
+        echo "📝 添加到 ~/.bashrc..."
+        
+        if ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' ~/.bashrc 2>/dev/null; then
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+            echo "✅ 已添加 PATH 设置到 ~/.bashrc"
+            echo "💡 请运行 'source ~/.bashrc' 或重新登录以生效"
+        fi
+    else
+        echo "✅ PATH 设置正确"
+    fi
+}
+
+# 下载默认模型
+download_default_model() {
+    echo "📥 下载默认模型..."
+    
+    local model_dir="$HOME/.local/share/model"
     local model_to_use="$DEFAULT_WHISPER_MODEL"
     if [[ "$INTERACTIVE_MODE" == "true" && -n "$USER_WHISPER_MODEL" ]]; then
         model_to_use="$USER_WHISPER_MODEL"
     fi
     
-    # 创建临时音频文件进行测试
-    local temp_audio="/tmp/whisper_test_$(date +%s).wav"
-    if command -v sox >/dev/null 2>&1; then
-        sox -n -r 16000 -c 1 "$temp_audio" synth 1 sine 440 vol 0.1
-        echo "📥 下载 $model_to_use 模型..."
-        whisper "$temp_audio" --language Chinese --model "$model_to_use" --fp16 False --output_format txt --output_dir /tmp >/dev/null 2>&1 || true
-        rm -f "$temp_audio" /tmp/whisper_test*.txt
-        echo "✅ 模型初始化完成"
+    local model_path="$model_dir/$model_to_use"
+    
+    if [[ -f "$model_path" ]]; then
+        echo "✅ 模型已存在: $model_path"
+        return 0
+    fi
+    
+    echo "🔄 下载模型 $model_to_use..."
+    local model_url=""
+    case "$model_to_use" in
+        "ggml-tiny.bin")
+            model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"
+            ;;
+        "ggml-base.bin")
+            model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+            ;;
+        "ggml-small.bin")
+            model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
+            ;;
+        "ggml-medium.bin")
+            model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+            ;;
+        "ggml-large-v3.bin")
+            model_url="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
+            ;;
+        *)
+            echo "⚠️  未知模型: $model_to_use"
+            echo "💡 请手动下载到: $model_path"
+            return 0
+            ;;
+    esac
+    
+    if command -v wget >/dev/null 2>&1; then
+        wget -P "$model_dir" "$model_url" || echo "⚠️  模型下载失败，请手动下载"
+    elif command -v curl >/dev/null 2>&1; then
+        curl -L -o "$model_path" "$model_url" || echo "⚠️  模型下载失败，请手动下载"
     else
-        echo "⚠️  跳过 Whisper 初始化，首次使用时会自动下载模型"
+        echo "⚠️  未找到 wget 或 curl，请手动下载模型"
+        echo "📝 下载地址: $model_url"
+        echo "📁 保存到: $model_path"
     fi
 }
 
@@ -567,10 +645,11 @@ main() {
     # 安装步骤
     install_system_deps
     test_audio_devices
-    install_python_deps
+    install_whisper_cpp
     setup_directories
     customize_script
-    init_whisper
+    check_path_setup
+    download_default_model
     create_desktop_entry
     show_usage
     

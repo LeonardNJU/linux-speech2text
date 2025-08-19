@@ -15,8 +15,8 @@ readonly LOG_FILE="$TEMP_DIR/voice_input.log"
 readonly MAX_DURATION=60
 readonly REMINDER_TIME=50
 readonly SAMPLE_RATE=16000
-readonly WHISPER_MODEL="small"
-readonly WHISPER_LANGUAGE="Chinese"
+readonly WHISPER_MODEL="ggml-small.bin"
+readonly WHISPER_LANGUAGE="zh"
 
 # 提示音文件路径
 readonly START_DING_PATHS=(
@@ -58,7 +58,7 @@ notify() {
 check_dependencies() {
     local missing_deps=()
     
-    for cmd in ffmpeg whisper; do
+    for cmd in ffmpeg whisper-cli; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             missing_deps+=("$cmd")
         fi
@@ -152,7 +152,7 @@ start_recording() {
     log "开始启动录音..."
     
     ffmpeg -loglevel error -y \
-        -f pulse -i default \
+        -f alsa -i hw:1,0 \
         -ac 1 -ar "$SAMPLE_RATE" \
         "$AUDIO_FILE" 2>>"$LOG_FILE" &
     
@@ -251,22 +251,14 @@ recognize_speech() {
     
     local output_file="$TEMP_DIR/voice_input.txt"
     
-    if ! whisper "$AUDIO_FILE" \
-        --language "$WHISPER_LANGUAGE" \
-        --model "$WHISPER_MODEL" \
-        --fp16 False \
-        --output_format txt \
-        --output_dir "$TEMP_DIR" \
-        --verbose False 2>>"$LOG_FILE"; then
+    local whisper_output
+    whisper_output=$(whisper-cli -m "$HOME/.local/share/model/$WHISPER_MODEL" -l "$WHISPER_LANGUAGE" -nt "$AUDIO_FILE" 2>>"$LOG_FILE")
+    if [[ $? -ne 0 ]]; then
         error_exit "语音识别失败，请检查音频质量"
     fi
     
-    if [[ ! -f "$output_file" ]]; then
-        error_exit "识别结果文件未生成"
-    fi
-    
     local text
-    text=$(cat "$output_file" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '\n')
+    text=$(echo "$whisper_output" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '\n')
     
     if [[ -z "$text" ]]; then
         notify "⚠️ 识别结果为空" "请检查录音内容或麦克风设置"

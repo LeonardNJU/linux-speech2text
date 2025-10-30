@@ -386,7 +386,7 @@ build_whisper_cpp() {
     # 安装到用户目录
     echo "📦 安装 whisper-cli 到 $install_dir/bin..."
     mkdir -p "$install_dir/bin"
-    cp main "$install_dir/bin/whisper-cli"
+    cp whisper-cli "$install_dir/bin/whisper-cli"
     chmod +x "$install_dir/bin/whisper-cli"
     
     # 清理构建目录

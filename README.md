@@ -1,5 +1,7 @@
 # Linux 语音输入系统
 
+[DEPRECATED] 目前此系统已废弃, 现在使用[VocoType-ibus](https://github.com/LeonardNJU/VocoType-ibus) 获得最佳效果!
+
 一个简单易用的 Linux 语音转文字输入工具，支持一键录音、自动识别、直接输入。
 
 **注意: 如果你用的是no-CUDA笔记本的话, 请使用CPU-version分支**
